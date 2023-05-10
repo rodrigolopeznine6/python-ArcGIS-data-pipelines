@@ -22,7 +22,7 @@ gis = GIS('https://www.arcgis.com', 'user', 'pw')
 
 # Use the ArcGIS Survey123 module to download our survey data to a DataFrame
 survey_manager = arcgis.apps.survey123.SurveyManager(gis)
-survey_by_id = survey_manager.get('2efc7e82e01d43ac8816de17cc60af67')
+survey_by_id = survey_manager.get('xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx')
 survey_df = survey_by_id.download('DF')
 
 # Format the DataFrame date column to match the format of our destination table date column
