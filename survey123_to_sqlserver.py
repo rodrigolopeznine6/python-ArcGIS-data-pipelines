@@ -65,7 +65,7 @@ for index, row in survey_df.iterrows():
         
 # Loop through transformed data and insert the rows into our destination SQL table
 for index, row in new_data_df.iterrows():
-    cursor.execute("INSERT INTO table_name (field_1, field_2, field_3) VALUES (?, ?,... ?)",
+    cursor.execute("INSERT INTO table_name (field_1, field_2, field_3) VALUES (?, ?, ?)",
                   row.date_col, row.attribute_col, row.activity_col)
 
 # commit & close connection
