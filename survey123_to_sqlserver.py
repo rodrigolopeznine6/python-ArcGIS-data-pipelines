@@ -1,11 +1,10 @@
 '''Survey123 to SQL Server
 
 Author: Rodrigo Lopez
-Purpose: This is a simple script for downloading Survey123 data to SQL.
+Purpose: This is a script for incrementally loading transformed survey 123 data into a SQL database for analytic purposes.
 
-Notes: An improvement of this would be to filter the survey data by
-a ID field such as a globalid, where we would keep only records
-which have not been inserted into our destination SQL table.
+Users are recording what apicultural activities they perform with they visit honey bee yards. The stakeholder would like to use the data
+to measure operational effecieny and eventually, over time, analyze how the timing of a certain activity is affected by weather patterns.
 
 '''
 
@@ -44,13 +43,27 @@ min_date = dt.strptime(result[0],'%Y-%m-%d')
 min_date = min_date.strftime('%Y-%m-%d')
 
 # Filter our DataFrame using our date returned by our SQL statement
-# Create new DataFrame containing only data we are interested in
-new_data_df = survey_df[survey_df['date'] > min_date]
+survey_df = survey_df[survey_df['date'] > min_date]
 
-# Perform any necessary transforms to new DataFrame here
+# transform DataFrame to match destination schema
+columns = ['date_col', 'attribute_col','activity_col']
+new_data_df = pd.DataFrame(columns=columns)
 
-# Loop through transformed dataframe using DataFrame iterrows() method
-# Use cursor.execute() function to insert new rows to our table
+# survey123 select multiple question stores selections as comma seperated string
+# we need to create a row for every selection to optimize our data for analysis
+for index, row in survey_df.iterrows():
+    selection = str(row.select_multiple_col).split(',')
+    for i in range(len(selection)):
+        # empty dictionary
+        data = {}
+        data['date_col'] = row.col1
+        data['attribute_col'] = row.col2
+        data['activity_col'] = selection[i]
+        
+        #append to our new DataFrame
+        new_data_df = new_data_df.append(data, ignore_index=True)
+        
+# Loop through transformed data and insert the rows into our destination SQL table
 for index, row in new_data_df.iterrows():
     cursor.execute("INSERT INTO table_name (field_1, field_2,... field_n) VALUES (?, ?,... ?)",
                   row.field_1, row.field_2,... row.field_3)
