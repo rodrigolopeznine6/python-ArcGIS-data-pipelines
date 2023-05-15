@@ -29,13 +29,13 @@ survey_df = survey_by_id.download('DF')
 survey_df["date"] = pd.to_datetime(survey_df["date"].dt.strftime('%Y-%m-%d'))
 
 # Use pyodbc to establish a database connection
-# In this example our destimation is a MS SQL Server database
+# In this example our destination is MS SQL Server
 # I have set trusted connection param to yes, alternatively provide UID and PWD params
 conn = pyodbc.connect('Driver={SQL Server};Server=SERVER;Database=DB;Trusted_Connection=yes')
 cursor = conn.cursor()
 
-# Use the cursor.execute() function to execute a SQL statement that returns the current max date in our data
-# Use cursor.fetchone() to return first row (our statement only returns one row)
+# Use the cursor.execute() function to execute a SQL statement that returns the current max date in our SQL table
+# Use cursor.fetchone() to obtain result
 cursor.execute('SELECT MAX(date_field) FROM table_name;')
 result = cursor.fetchone()
 
