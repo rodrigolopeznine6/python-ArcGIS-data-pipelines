@@ -42,11 +42,15 @@ result = cursor.fetchone()
 min_date = dt.strptime(result[0],'%Y-%m-%d')
 min_date = min_date.strftime('%Y-%m-%d')
 
+# Since the script will need to run daily on PST and users submit from Central Daylight time, we need to exclude the current day to avoid missing data
+today = dt.today()
+today = today.strftime('%Y-%m-%d')
+
 # Filter our DataFrame using our date returned by our SQL statement
-survey_df = survey_df[survey_df['date'] > min_date]
+survey_df = survey_df[(survey_df['date'] > min_date) & (survey_df['date'] < today)]
 
 # transform DataFrame to match destination schema
-columns = ['date_col', 'attribute_col','activity_col']
+columns = ['date_col', 'attribute_col', 'numerical_col', 'activity_col']
 new_data_df = pd.DataFrame(columns=columns)
 
 # survey123 select multiple question stores selections as comma seperated string
@@ -58,11 +62,15 @@ for index, row in survey_df.iterrows():
         data = {}
         data['date_col'] = row.col1
         data['attribute_col'] = row.col2
+        data['numerical_col'] = row.col3
         data['activity_col'] = selection[i]
         
         #append to our new DataFrame
         new_data_df = new_data_df.append(data, ignore_index=True)
         
+# Deal with missing numerical values to avoid SQL errors
+new_data_df['numerical_col'].fillna(0, inplace=True)
+
 # Loop through transformed data and insert the rows into our destination SQL table
 for index, row in new_data_df.iterrows():
     cursor.execute("INSERT INTO table_name (field_1, field_2, field_3) VALUES (?, ?, ?)",
