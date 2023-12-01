@@ -1,84 +1,94 @@
-'''Survey123 to SQL Server
+'''
+Incremental loading of Survey123 data to SQL Server
 
 Author: Rodrigo Lopez
-Purpose: This is a script for incrementally loading transformed survey 123 data into a SQL database for analytic purposes.
+Purpose: This is a function for incrementally loading transformed survey 123 data into a SQL database for analytic purposes.
 
 Users are recording what apicultural activities they perform with they visit honey bee yards. The stakeholder would like to use the data
-to measure operational effecieny and eventually, over time, analyze how the timing of a certain activity is affected by weather patterns.
+to measure operational effecieny and eventually, over time, analyze how the timing of a certain activity affects honey production.
 
 '''
 
 
-# Import libraries
-import pyodbc
-import pandas as pd
-import arcgis
-from arcgis.gis import GIS
-from datetime import datetime as dt
+def incremental_survey123_to_sql(agol_user, agol_pw, survey_id, survey_date_field,sql_conn_string,sql_table, sql_date_field):
+	'''
+	Arguments
+		agol_user: str, username for connecting to agol
+		agol_pw: str, pw for connecting to agol
+		survey_id: str, the id of survey123 form being used to collect data
+		survey_date_field: str, the date field of survey
+		sql_conn_string: str, pyodbc connection string for connecting to sql
+		sql_table: str, target sql table
+		sql_date_field: str, target sql table col name
+	Returns:
+		None
+	'''
 
-# Connect to AGOL with survey owner or admin credentials
-gis = GIS('https://www.arcgis.com', 'user', 'pw')
+	# agol connection
+	gis = GIS('https://www.arcgis.com', agol_user, agol_pw)
+	
+	# survey manager
+	survey_manager = arcgis.apps.survey123.SurveyManager(gis)
+	survey_by_id = survey_manager.get(survey_id)
+	# download survey data as df
+	survey_df = survey_by_id.download('DF')
 
-# Use the ArcGIS Survey123 module to download our survey data to a DataFrame
-survey_manager = arcgis.apps.survey123.SurveyManager(gis)
-survey_by_id = survey_manager.get('xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx')
-survey_df = survey_by_id.download('DF')
+	# format survey date column to match sql date col
+	survey_df[survey_date_field] = pd.to_datetime(survey_df[survey_date_field].dt.strftime('%Y-%m-%d'))
 
-# Format the DataFrame date column to match the format of our destination table date column
-survey_df["date"] = pd.to_datetime(survey_df["date"].dt.strftime('%Y-%m-%d'))
+	# pyodbc connection
+	conn = pyodbc.connect(sql_conn_string)
+    cursor = conn.cursor()
 
-# Use pyodbc to establish a database connection
-# In this example our destination is MS SQL Server
-# I have set trusted connection param to yes, alternatively provide UID and PWD params
-conn = pyodbc.connect('Driver={SQL Server};Server=SERVER;Database=DB;Trusted_Connection=yes')
-cursor = conn.cursor()
+	# max date from sql date column that will serve as min date for getting relevant data
+	max_date_select_str = f'SELECT MAX({sql_date_field}) FROM {sql_table}'
+	cursor.execute(max_date_select_str)
 
-# Use the cursor.execute() function to execute a SQL statement that returns the current max date in our SQL table
-# Use cursor.fetchone() to obtain result
-cursor.execute('SELECT MAX(date_field) FROM table_name;')
-result = cursor.fetchone()
+	max_sql_date = cursor.fetchone()
+	min_survey_date = dt.strptime(max_sql_date[0],'%Y-%m-%d')
+	min_survey_date = min_date.strftime('%Y-%m-%d')
 
-# Format the date from our SQL statement to match the format of the date field in our DataFrame date field
-min_date = dt.strptime(result[0],'%Y-%m-%d')
-min_date = min_date.strftime('%Y-%m-%d')
+	# may need to exclude today, depending on when running script
+	todays_date = dt.today()
+	todays_date = todays_date.strftime('%Y-%m-%d')
 
-# Since the script will need to run daily on PST and users submit from Central Daylight time, we need to exclude the current day to avoid missing data
-today = dt.today()
-today = today.strftime('%Y-%m-%d')
+	# filter df for relevant data
+	survey_df = survey_df[(survey_df[survey_date_field] > min_survey_date) & (survey_df[survey_date_field] < todays_date)]
 
-# Filter our DataFrame using our date returned by our SQL statement
-survey_df = survey_df[(survey_df['date'] > min_date) & (survey_df['date'] < today)]
+	# transform data (optional)
+	new_columns = ['date_col', 'attribute_col', 'numerical_col', 'activity_col']
+	new_data_df = pd.DataFrame(columns=columns)
 
-# transform DataFrame to match destination schema
-columns = ['date_col', 'attribute_col', 'numerical_col', 'activity_col']
-new_data_df = pd.DataFrame(columns=columns)
-
-# survey123 select multiple question stores selections as comma seperated string
-# we need to create a row for every selection to optimize our data for analysis
-for index, row in survey_df.iterrows():
-    selection = str(row.select_multiple_col).split(',')
-    for i in range(len(selection)):
-        # empty dictionary
-        data = {}
-        data['date_col'] = row.col1
-        data['attribute_col'] = row.col2
-        data['numerical_col'] = row.col3
-        data['activity_col'] = selection[i]
+	for index, row in survey_df.iterrows():
+		selection = str(row.select_multiple_col).split(',')
+		for i in range(len(selection)):
+			# empty dictionary
+            data = {}
+            data['date_col'] = row.col1
+            data['attribute_col'] = row.col2
+            data['numerical_col'] = row.col3
+            data['activity_col'] = selection[i]
         
-        #append to our new DataFrame
-        new_data_df = new_data_df.append(data, ignore_index=True)
+            #append to our new DataFrame
+            new_data_df = new_data_df.append(data, ignore_index=True)
         
-# Deal with missing numerical values to avoid SQL errors
-new_data_df['numerical_col'].fillna(0, inplace=True)
+    # prepare insert statement for new data df loop
+	insert_cols = ','.join(new_data_df.columns)
+	insert_placeholders = ','.join(['?' for _ in new_data_df.columns])
+	insert_stmt = f'INSERT INTO {sql_table} ({insert_cols}) VALUES ({insert_placeholders})'
 
-# Loop through transformed data and insert the rows into our destination SQL table
-for index, row in new_data_df.iterrows():
-    cursor.execute("INSERT INTO table_name (date_field, field_2, field_3, field_4) VALUES (?, ?, ?, ?)",
-                  row.date_col, row.attribute_col, row.activity_col)
+	# loop and insert new data
+	for index, row in new_data_df.iterrows():
+		
+		# deal with NaN values
+		row = row.where(pd.notnull(row), None)
+		values = row.tolist()
+		
+		cursor.execute(insert_stmt, values)
 
-# commit & close connection
-conn.commit()
-cursor.close()
+	# commit and close connection        
+    conn.commit()
+	conn.close()
     
 
 
