@@ -11,6 +11,7 @@ to measure operational effecieny and eventually, over time, analyze how the timi
 
 
 def incremental_survey123_to_sql(agol_user, agol_pw, survey_id, survey_date_field,sql_conn_string,sql_table, sql_date_field):
+	
 	'''
 	Arguments
 		agol_user: str, username for connecting to agol
@@ -38,7 +39,7 @@ def incremental_survey123_to_sql(agol_user, agol_pw, survey_id, survey_date_fiel
 
 	# pyodbc connection
 	conn = pyodbc.connect(sql_conn_string)
-    cursor = conn.cursor()
+    	cursor = conn.cursor()
 
 	# max date from sql date column that will serve as min date for getting relevant data
 	max_date_select_str = f'SELECT MAX({sql_date_field}) FROM {sql_table}'
@@ -60,19 +61,21 @@ def incremental_survey123_to_sql(agol_user, agol_pw, survey_id, survey_date_fiel
 	new_data_df = pd.DataFrame(columns=columns)
 
 	for index, row in survey_df.iterrows():
-		selection = str(row.select_multiple_col).split(',')
-		for i in range(len(selection)):
+		
+		multi_selection = str(row.select_multiple_col).split(',')
+		for i in range(len(multi_selection)):
+			
 			# empty dictionary
-            data = {}
-            data['date_col'] = row.col1
-            data['attribute_col'] = row.col2
-            data['numerical_col'] = row.col3
-            data['activity_col'] = selection[i]
+            		data = {}
+            		data['date_col'] = row.col1
+            		data['attribute_col'] = row.col2
+            		data['numerical_col'] = row.col3
+            		data['activity_col'] = selection[i]
         
-            #append to our new DataFrame
-            new_data_df = new_data_df.append(data, ignore_index=True)
+        		#append to our new DataFrame
+        		new_data_df = new_data_df.append(data, ignore_index=True)
         
-    # prepare insert statement for new data df loop
+	# prepare insert statement for new data df loop
 	insert_cols = ','.join(new_data_df.columns)
 	insert_placeholders = ','.join(['?' for _ in new_data_df.columns])
 	insert_stmt = f'INSERT INTO {sql_table} ({insert_cols}) VALUES ({insert_placeholders})'
@@ -87,7 +90,7 @@ def incremental_survey123_to_sql(agol_user, agol_pw, survey_id, survey_date_fiel
 		cursor.execute(insert_stmt, values)
 
 	# commit and close connection        
-    conn.commit()
+	conn.commit()
 	conn.close()
     
 
